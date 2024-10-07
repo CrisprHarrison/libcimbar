@@ -59,8 +59,8 @@ return {
   {
     // reset zoom
     var canvas = document.getElementById('canvas');
-    var width = window.innerWidth - 10;
-    var height = window.innerHeight - 10;
+    var width = window.innerWidth - 50;
+    var height = window.innerHeight - 50;
     Main.scaleCanvas(canvas, width, height);
     Main.alignInvisibleClick(canvas);
   },
@@ -219,85 +219,6 @@ return {
   }
 };
 }();
-
-window.addEventListener('keydown', function(e) {
-  e = e || event;
-  if (e.target instanceof HTMLBodyElement) {
-    if (e.key == 'Enter' || e.keyCode == 13 ||
-        e.key == 'Tab' || e.keyCode == 9 ||
-        e.key == 'Space' || e.keyCode == 32
-    ) {
-      Main.clickNav();
-      e.preventDefault();
-    }
-    else if (e.key == 'Backspace' || e.keyCode == 8) {
-      Main.togglePause(true);
-      e.preventDefault();
-    }
-  }
-  else {
-    if (e.key == 'Escape' || e.keyCode == 27 ||
-        e.key == 'Backspace' || e.keyCode == 8 ||
-        e.key == 'End' || e.keyCode == 35 ||
-        e.key == 'Home' || e.keyCode == 36
-    ) {
-      Main.blurNav();
-    }
-    else if (e.key == 'Tab' || e.keyCode == 9 ||
-             e.key == 'ArrowDown' || e.keyCode == 40
-    ) {
-      var nav = document.getElementById('nav-button');
-      var links = document.getElementById('nav-content').getElementsByTagName('a');
-      if (nav.classList.contains('attention')) {
-        nav.classList.remove('attention');
-        links[0].classList.add('attention');
-        return;
-      }
-      for (var i = 0; i < links.length; i++) {
-        if (links[i].classList.contains('attention')) {
-          var next = i+1 == links.length? nav : links[i+1];
-          links[i].classList.remove('attention');
-          next.classList.add('attention');
-          break;
-        }
-      }
-    }
-    else if (e.key == 'ArrowUp' || e.keyCode == 38)
-    {
-      var nav = document.getElementById('nav-button');
-      var links = document.getElementById('nav-content').getElementsByTagName('a');
-      if (nav.classList.contains('attention')) {
-        nav.classList.remove('attention');
-        links[links.length-1].classList.add('attention');
-        return;
-      }
-
-      for (var i = 0; i < links.length; i++) {
-        if (links[i].classList.contains('attention')) {
-          var next = i == 0? nav : links[i-1];
-          links[i].classList.remove('attention');
-          next.classList.add('attention');
-          break;
-        }
-      }
-    }
-    else if (e.key == 'Enter' || e.keyCode == 13 ||
-             e.key == ' ' || e.keyCode == 32
-    ) {
-      var nav = document.getElementById('nav-button');
-      if (nav.classList.contains('attention')) {
-        Main.blurNav();
-        return;
-      }
-      var links = document.getElementById('nav-content').getElementsByTagName('a');
-      for (var i = 0; i < links.length; i++) {
-        if (links[i].classList.contains('attention')) {
-          links[i].click();
-        }
-      }
-    }
-  }
-}, true);
 
 window.addEventListener("touchstart", function(e) {
   e = e || event;
