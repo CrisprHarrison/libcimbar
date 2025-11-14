@@ -1,8 +1,8 @@
 /* This code is subject to the terms of the Mozilla Public License, v.2.0. http://mozilla.org/MPL/2.0/. */
 #include "cimb_translator/Config.h"
 #include "compression/zstd_decompressor.h"
-#include "encoder/Decoder.h"
-#include "encoder/Encoder.h"
+#include "encoder/DecoderPlus.h"
+#include "encoder/EncoderPlus.h"
 #include "extractor/Extractor.h"
 #include "extractor/SimpleCameraCalibration.h"
 #include "extractor/Undistort.h"
@@ -13,7 +13,7 @@
 #include "cxxopts/cxxopts.hpp"
 
 #include <cstdio>
-#include <experimental/filesystem>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <string>
@@ -40,8 +40,11 @@ namespace {
 		{
 			if (_done)
 				return;
-
+#ifdef _WIN32
+			if (::feof(stdin))
+#else
 			if (::feof(::stdin))
+#endif
 			{
 				mark_done();
 				return;
@@ -101,11 +104,10 @@ namespace {
 }
 
 template <typename FilenameIterable>
-int encode(const FilenameIterable& infiles, const std::string& outpath, int ecc, int color_bits, int compression_level, bool legacy_mode, bool no_fountain)
+int encode(const FilenameIterable& infiles, const std::string& outpath, int compression_level, bool no_fountain)
 {
-	Encoder en(ecc, cimbar::Config::symbol_bits(), color_bits);
-	if (legacy_mode)
-		en.set_legacy_mode();
+	EncoderPlus en;
+	en.set_encode_id(109);
 	for (const string& f : infiles)
 	{
 		if (f.empty())
@@ -119,7 +121,7 @@ int encode(const FilenameIterable& infiles, const std::string& outpath, int ecc,
 }
 
 template <typename FilenameIterable>
-int decode(const FilenameIterable& infiles, const std::function<int(cv::UMat, unsigned, bool, int)>& decodefun, bool no_deskew, bool undistort, unsigned color_mode, int preprocess, int color_correct)
+int decode(const FilenameIterable& infiles, const std::function<int(cv::UMat, bool, int)>& decodefun, bool no_deskew, bool undistort, int preprocess, int color_correct)
 {
 	int err = 0;
 	for (const string& inf : infiles)
@@ -152,7 +154,7 @@ int decode(const FilenameIterable& infiles, const std::function<int(cv::UMat, un
 				shouldPreprocess = true;
 		}
 
-		int bytes = decodefun(img, color_mode, shouldPreprocess, color_correct);
+		int bytes = decodefun(img, shouldPreprocess, color_correct);
 		if (!bytes)
 			err |= 4;
 	}
@@ -162,10 +164,10 @@ int decode(const FilenameIterable& infiles, const std::function<int(cv::UMat, un
 // see also "decodefun" for non-fountain decodes, defined as a lambda inline below.
 // this one needs its own function since it's a template (:
 template <typename SINK>
-std::function<int(cv::UMat,unsigned,bool,int)> fountain_decode_fun(SINK& sink, Decoder& d)
+std::function<int(cv::UMat,bool,int)> fountain_decode_fun(SINK& sink, Decoder& d)
 {
-	return [&sink, &d] (cv::UMat m, unsigned cm, bool pre, int cc) {
-		return d.decode_fountain(m, sink, cm, pre, cc);
+	return [&sink, &d] (cv::UMat m, bool pre, int cc) {
+		return d.decode_fountain(m, sink, pre, cc);
 	};
 }
 
@@ -173,16 +175,12 @@ int main(int argc, char** argv)
 {
 	cxxopts::Options options("cimbar encoder/decoder", "Demonstration program for cimbar codes");
 
-	unsigned colorBits = cimbar::Config::color_bits();
 	unsigned compressionLevel = cimbar::Config::compression_level();
-	unsigned ecc = cimbar::Config::ecc_bytes();
 	options.add_options()
 		("n,encode", "Run the encoder!", cxxopts::value<bool>())
 		("i,in", "Encoded pngs/jpgs/etc (for decode), or file to encode", cxxopts::value<vector<string>>())
 		("o,out", "Output file prefix (encoding) or directory (decoding).", cxxopts::value<string>())
-		("c,color-bits", "Color bits. [0-3]", cxxopts::value<int>()->default_value(turbo::str::str(colorBits)))
-		("e,ecc", "ECC level", cxxopts::value<unsigned>()->default_value(turbo::str::str(ecc)))
-		("m,mode", "Select a cimbar mode. B (the default) is new to 0.6.x. 4C is the 0.5.x config. [B,4C]", cxxopts::value<string>()->default_value("B"))
+		("m,mode", "Select a cimbar mode. B (the default) is new to 0.6.x. 4C is the 0.5.x config. [B,Bm,4C]", cxxopts::value<string>()->default_value("B"))
 		("z,compression", "Compression level. 0 == no compression.", cxxopts::value<int>()->default_value(turbo::str::str(compressionLevel)))
 		("color-correct", "Toggle decoding color correction. 2 == full (fountain mode only). 1 == simple. 0 == off.", cxxopts::value<int>()->default_value("2"))
 		("color-correction-file", "Debug -- save color correction matrix generated during fountain decode, or use it for non-fountain decodes", cxxopts::value<string>())
@@ -200,41 +198,53 @@ int main(int argc, char** argv)
 	if (result.count("help"))
 	{
 		std::cerr << options.help() << std::endl;
-		exit(0);
+		return 0;
 	}
 
-	string outpath = std::experimental::filesystem::current_path();
+	string outpath = std::filesystem::current_path().string();
 	if (result.count("out"))
 		outpath = result["out"].as<string>();
 	std::cerr << "Output files will appear in " << outpath << std::endl;
 
 	bool useStdin = !result.count("in");
 	vector<string> infiles;
-	if (useStdin)
-		std::cerr << "Enter input filenames:" << std::endl;
-	else
+	if (!useStdin)
+	{
 		infiles = result["in"].as<vector<string>>();
+		if (infiles.empty())
+		{
+			std::cerr << "No input files? :(" << std::endl;
+			return 128;
+		}
+	}
+	else
+		std::cerr << "Enter input filenames:" << std::endl;
 
 	bool encodeFlag = result.count("encode");
 	bool no_fountain = result.count("no-fountain");
 
-	colorBits = std::min(3, result["color-bits"].as<int>());
 	compressionLevel = result["compression"].as<int>();
-	ecc = result["ecc"].as<unsigned>();
 
-	bool legacy_mode = false;
+	// set config
+	unsigned config_mode = 68;
 	if (result.count("mode"))
 	{
 		string mode = result["mode"].as<string>();
-		legacy_mode = (mode == "4c") or (mode == "4C");
+		if (mode == "4" or mode == "4c" or mode == "4C")
+			config_mode = 4;
+		else if (mode == "8c" or mode == "8C")
+			config_mode = 8;
+		else if (mode == "Bm" or mode == "BM")
+			config_mode = 67;
 	}
+	cimbar::Config::update(config_mode);
 
 	if (encodeFlag)
 	{
 		if (useStdin)
-			return encode(StdinLineReader(), outpath, ecc, colorBits, compressionLevel, legacy_mode, no_fountain);
+			return encode(StdinLineReader(), outpath, compressionLevel, no_fountain);
 		else
-			return encode(infiles, outpath, ecc, colorBits, compressionLevel, legacy_mode, no_fountain);
+			return encode(infiles, outpath, compressionLevel, no_fountain);
 	}
 
 	// else, decode
@@ -246,8 +256,7 @@ int main(int argc, char** argv)
 		color_correction_file = result["color-correction-file"].as<string>();
 	int preprocess = result["preprocess"].as<int>();
 
-	unsigned color_mode = legacy_mode? 0 : 1;
-	Decoder d(ecc, colorBits);
+	DecoderPlus d;
 
 	if (no_fountain)
 	{
@@ -256,32 +265,32 @@ int main(int argc, char** argv)
 
 		// simpler encoding, just the basics + ECC. No compression, fountain codes, etc.
 		std::ofstream f(outpath);
-		std::function<int(cv::UMat,unsigned,bool,int)> decodefun = [&f, &d] (cv::UMat m, unsigned cm, bool pre, int cc) {
-			return d.decode(m, f, cm, pre, cc);
+		std::function<int(cv::UMat,bool,int)> decodefun = [&f, &d] (cv::UMat m, bool pre, int cc) {
+			return d.decode(m, f, pre, cc);
 		};
 		if (useStdin)
-			return decode(StdinLineReader(), decodefun, no_deskew, undistort, color_mode, preprocess, color_correct);
+			return decode(StdinLineReader(), decodefun, no_deskew, undistort, preprocess, color_correct);
 		else
-			return decode(infiles, decodefun, no_deskew, undistort, color_mode, preprocess, color_correct);
+			return decode(infiles, decodefun, no_deskew, undistort, preprocess, color_correct);
 	}
 
 	// else, the good stuff
 	int res = -200;
 
-	unsigned chunkSize = cimbar::Config::fountain_chunk_size(ecc, colorBits+cimbar::Config::symbol_bits(), legacy_mode);
+	unsigned chunkSize = cimbar::Config::fountain_chunk_size();
 	if (compressionLevel <= 0)
 	{
-		fountain_decoder_sink<std::ofstream> sink(outpath, chunkSize, true);
-		res = decode(infiles, fountain_decode_fun(sink, d), no_deskew, undistort, color_mode, preprocess, color_correct);
+		fountain_decoder_sink sink(chunkSize, write_on_store<std::ofstream>(outpath, true));
+		res = decode(infiles, fountain_decode_fun(sink, d), no_deskew, undistort, preprocess, color_correct);
 	}
 	else // default case, all bells and whistles
 	{
-		fountain_decoder_sink<cimbar::zstd_decompressor<std::ofstream>> sink(outpath, chunkSize, true);
+		fountain_decoder_sink sink(chunkSize, write_on_store<cimbar::zstd_decompressor<std::ofstream>>(outpath, true));
 
 		if (useStdin)
-			res = decode(StdinLineReader(), fountain_decode_fun(sink, d), no_deskew, undistort, color_mode, preprocess, color_correct);
+			res = decode(StdinLineReader(), fountain_decode_fun(sink, d), no_deskew, undistort, preprocess, color_correct);
 		else
-			res = decode(infiles, fountain_decode_fun(sink, d), no_deskew, undistort, color_mode, preprocess, color_correct);
+			res = decode(infiles, fountain_decode_fun(sink, d), no_deskew, undistort, preprocess, color_correct);
 	}
 	if (not color_correction_file.empty())
 		d.save_ccm(color_correction_file);

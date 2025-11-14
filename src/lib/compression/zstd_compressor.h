@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 namespace cimbar {
 
@@ -14,6 +15,7 @@ class zstd_compressor : public STREAM
 {
 public:
 	using STREAM::STREAM; // pull in constructors
+	static const size_t CHUNK_SIZE = 0x4000;
 
 public:
 	~zstd_compressor()
@@ -22,6 +24,8 @@ public:
 			ZSTD_freeCCtx(_cctx);
 	}
 
+	// if you call write directly, len should be a multiple of CHUNK_SIZE
+	// .. or the final bytes of the input
 	bool write(const char* data, size_t len)
 	{
 		size_t writeLen = CHUNK_SIZE;
@@ -72,23 +76,25 @@ public:
 		return totalBytesRead;
 	}
 
-	unsigned pad(unsigned len)
+	size_t pad(unsigned len)
 	{
 		if (len < 9)
 			len = 9;
 
-		std::array<char, 8> header = {0x50, 0x2A, 0x4D, 0x18, (char)(len&0xFF), (char)(len&0xFF00 >> 8), (char)(len&0xFF0000 >> 16), 0};
-		STREAM::write(header.data(), header.size());
+		std::string temp(len-8, '\0');
+		size_t writ = ZSTD_writeSkippableFrame(_compBuff.data(), _compBuff.size(), temp.data(), temp.size(), 0);
 
-		len -= 8;
-		std::fill(_compBuff.begin(), _compBuff.end(), 0);
-		for (size_t writeLen = CHUNK_SIZE; len > 0; len -= writeLen)
-		{
-			if (len < writeLen)
-				writeLen = len;
-			STREAM::write(_compBuff.data(), writeLen);
-		}
-		return len;
+		STREAM::write(_compBuff.data(), writ);
+		return writ;
+	}
+
+	size_t write_header(const char* data, unsigned len)
+	{
+		std::string temp = "\x01";
+		temp += std::string_view(data, len);
+		size_t writ = ZSTD_writeSkippableFrame(_compBuff.data(), _compBuff.size(), temp.data(), temp.size(), 0);
+		STREAM::write(_compBuff.data(), writ);
+		return writ;
 	}
 
 	size_t size()
@@ -100,7 +106,6 @@ public:
 	}
 
 protected:
-	static const size_t CHUNK_SIZE = 0x4000;
 	int _compressionLevel = 16;
 	ZSTD_CCtx* _cctx = ZSTD_createCCtx();
 	std::vector<char> _compBuff = std::vector<char>(ZSTD_compressBound(CHUNK_SIZE));
