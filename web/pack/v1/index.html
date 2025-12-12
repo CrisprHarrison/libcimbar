@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en" data-framework="javascript">
+<head>
+<title>Cimbar Encoder</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, user-scalable=no">
+<link rel="manifest" href="pwa.json">
+</head>
+<body>
+
+<style>
+* {
+	margin: 0;
+	padding: 0;
+}
+
+html, body {
+	height: 100vh;
+}
+
+body {
+	background-color: black;
+	background-size: cover;
+	color: gray;
+	display: flex;
+	align-items: flex-start;
+	transition: opacity 0.4s ease-in;
+}
+
+li {
+  border-radius: 50px;
+}
+
+ul {
+  padding: 6px;
+}
+
+#status {
+	position: fixed;
+	right: 0;
+	top: 0;
+}
+
+#nav-container:focus-within {
+	z-index: 1;
+}
+
+#nav-content, #nav-container .bg,  #nav-container:focus-within #nav-button {
+ 	z-index: 1;
+ }
+
+#canvas {
+	display: block;
+	position: relative;
+}
+
+#dragdrop {
+	background-color: #1c1b1d;
+	margin: 15px auto;
+  margin-left: 0px;
+	color: #F0F0F0;
+  border-radius: 25px;
+  padding: 12px;
+  height: 95%;
+}
+
+.dragdrop::before {
+	content: "【 Tap to start 】";
+	font: 1.5em sans-serif;
+	padding-top: 2em;
+	position: absolute;
+	left: -3%;
+	text-align: center;
+	width: 100%;
+}
+
+.dragdrop.error:before {
+	content: "⌜ Error! WebGL is not enabled :( ⌟";
+}
+
+#invisible_click {
+	position: fixed;
+	opacity: 0;
+	pointer-events: auto;
+}
+#invisible_click.active {
+	cursor: none;
+}
+#nav-container:focus-within + #invisible_click {
+	pointer-events: none;
+	display: none;
+}
+
+/* options */
+#nav-container a.mode-b, #nav-container a.mode-4c {
+  color: #555;
+}
+#nav-container.mode-b a.mode-b, #nav-container.mode-4c a.mode-4c {
+  color: #9fa6b2;
+}
+
+/* nav stuff */
+/* built off of https://codepen.io/dannievinther/pen/NvZjvz */
+#nav-container {
+  top: 0;
+  pointer-events: none;
+  margin: 15px;
+  border-radius: 25px;
+  width: 175px;
+}
+#nav-container .bg {
+  pointer-events: auto;
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+  opacity: 0;
+  transition: .3s;
+  background: black;
+}
+#nav-container:focus-within .bg {
+  visibility: visible;
+  opacity: .6;
+}
+#nav-container * {
+  visibility: visible;
+}
+
+#nav-button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 60px;
+  width: 30px;
+  margin-left: 15px;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  border: 0;
+  outline: 0;
+  background-image: linear-gradient(180deg, rgb(0,0,0,0) 10%, rgb(0,0,0) 40%, rgb(0,0,0) 60%, rgb(0,0,0,0) 90%);
+  background-color: initial;
+}
+.icon-bar {
+  display: block;
+  width: 100%;
+  height: 3px;
+  transition: .3s;
+}
+.icon-bar + .icon-bar {
+  margin-top: 3px;
+}
+#nav-container .icon-bar:nth-of-type(1) {
+  background-color: #00ff00;
+  box-shadow: 0px 0px 5px #00ff00, 0px 0px 2px #00ff00;
+}
+#nav-container .icon-bar:nth-of-type(2) {
+  background-color: #ffff00;
+  box-shadow: 0px 0px 5px #ffff00, 0px 0px 2px #ffff00;
+}
+#nav-container .icon-bar:nth-of-type(3) {
+  background-color: #00ffff;
+  box-shadow: 0px 0px 5px #00ffff, 0px 0px 2px #00ffff;
+}
+#nav-container .icon-bar:nth-of-type(4) {
+  background-color: #ff00ff;
+  box-shadow: 0px 0px 5px #ff00ff, 0px 0px 2px #ff00ff;
+}
+
+#nav-container.mode-4c .icon-bar:nth-of-type(1) {
+  background-color: #00ffff;
+  box-shadow: 0px 0px 5px #00ffff, 0px 0px 2px #00ffff;
+}
+#nav-container.mode-4c .icon-bar:nth-of-type(2) {
+  background-color: #ffff00;
+  box-shadow: 0px 0px 5px #ffff00, 0px 0px 2px #ffff00;
+}
+#nav-container.mode-4c .icon-bar:nth-of-type(3) {
+  background-color: #00ff00;
+  box-shadow: 0px 0px 5px #00ff00, 0px 0px 2px #00ff00;
+}
+#nav-container.mode-4c .icon-bar:nth-of-type(4) {
+  background-color: #ff00ff;
+  box-shadow: 0px 0px 5px #ff00ff, 0px 0px 2px #ff00ff;
+}
+
+#nav-container:focus-within #nav-button {
+  pointer-events: none;
+}
+#nav-container:focus-within .icon-bar {
+  background-color: #aaa;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+#nav-button.attention:focus-within .icon-bar {
+  background-color: #00ffff;
+}
+#nav-container:focus-within .icon-bar:nth-of-type(1) {
+  transform: translate3d(0,9px,0) rotate(45deg);
+}
+#nav-container:focus-within .icon-bar:nth-of-type(2), #nav-container:focus-within .icon-bar:nth-of-type(3) {
+  opacity: 0;
+}
+#nav-container:focus-within .icon-bar:nth-of-type(4) {
+  transform: translate3d(0,-9px,0) rotate(-45deg);
+}
+
+#nav-content {
+  padding: 20px;
+  position: relative;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow-x: clip;
+  background-color: #211f21;
+  text-align: center;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+  transform: translateX(0);
+  transition: transform .3s;
+  will-change: transform;
+  border-radius: 25px;
+}
+
+#nav-content ul {
+  height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+#nav-content hr {
+  border: 1px solid #444;
+}
+
+#nav-content li a {
+  display: block;
+  padding: 10px 5px;
+  color: #9fa6b2;
+  text-decoration: none;
+  transition: color .1s;
+}
+
+#nav-content li a.attention {
+    animation: glowing 1.5s infinite alternate;
+}
+#nav-content li a {
+  font-size: 2em;
+}
+#nav-content li:hover {
+  background-color: #2c323c;
+}
+
+#nav-content li:not(.small) + .small {
+  margin-top: auto;
+}
+#nav-content li.small {
+  display: flex;
+  align-self: center;
+}
+#nav-content li.small a {
+  font-size: 1em;
+}
+
+#nav-container:focus-within #nav-content {
+  transform: none;
+}
+
+@keyframes glowing {
+    0% {
+        color: #00ffff;
+    }
+}
+</style>
+
+<div id="status"></div>
+
+<div id="nav-container" class="mode-4c">
+  <div id="nav-content" tabindex="-1">
+    <span id="current-file">No file selected</span>
+    <ul>
+      <li><a class="attention" id="nav-find-file-link" href="javascript:void(0)" onclick="Main.clickFileInput()">File</a></li>
+      <li><a class="mode-b" href="javascript:void(0)" onclick="Main.setMode('B')">B</a></li>
+      <li><a class="mode-4c" href="javascript:void(0)" onclick="Main.setMode('4C')">4C</a></li>
+    </ul>
+  </div>
+</div>
+
+<div id="dragdrop" class="dragdrop" title="Drag and drop a file">
+	<canvas id="canvas" class="canvas"></canvas>
+</div>
+
+<input style="display:none;" type="file" name="file_input" id="file_input" onchange="Main.fileInput(this);" />
+
+<a id="invisible_click" href="javascript:;" onclick="Main.clickNav()"></a>
+
+<script type="text/javascript">
+	if ('serviceWorker' in navigator) {
+		navigator.serviceWorker.register('./sw.js');
+	}
+	var canvas = document.getElementById('canvas');
+
+	var Module = {};
+	Module.canvas = canvas;
+	Module.onRuntimeInitialized = () => {
+		Main.init(canvas);
+		Main.nextFrame();
+	};
+</script>
+
+# 这里我删除了很长的 JS
+
+<script type="text/javascript">
+  var Main = function() {
+
+var _interval = 66;
+var _pause = 0;
+
+var _showStats = false;
+var _counter = 0;
+var _renderTime = 0;
+
+function toggleFullscreen()
+{
+  if (document.fullscreenElement) {
+    return document.exitFullscreen();
+  }
+  else {
+    return document.documentElement.requestFullscreen();
+  }
+}
+
+function importFile(f)
+{
+  const fileReader = new FileReader();
+  fileReader.onload = (event) => {
+    const imageData = new Uint8Array(event.target.result);
+    const numBytes = imageData.length * imageData.BYTES_PER_ELEMENT;
+    const dataPtr = Module._malloc(numBytes);
+    const dataOnHeap = new Uint8Array(Module.HEAPU8.buffer, dataPtr, numBytes);
+    dataOnHeap.set(imageData);
+    Main.encode(f.name, dataOnHeap);
+    Module._free(dataPtr);
+
+    Main.setHTML("current-file", f.name);
+  };
+  fileReader.onerror = () => {
+    console.error('Unable to read file ' + f.name + '.');
+  };
+
+  fileReader.readAsArrayBuffer(f);
+}
+
+// public interface
+return {
+  init : function(canvas)
+  {
+    Module._initialize_GL(1040, 1040);
+    Main.resize();
+    Main.check_GL_enabled(canvas);
+  },
+
+  check_GL_enabled : function(canvas)
+  {
+    if (canvas.getContext("2d")) {
+       var elem = document.getElementById('dragdrop');
+       elem.classList.add("error");
+    }
+  },
+
+  resize : function()
+  {
+    // reset zoom
+    var canvas = document.getElementById('canvas');
+    var width = window.innerWidth - 50;
+    var height = window.innerHeight - 50;
+    Main.scaleCanvas(canvas, width, height);
+    Main.alignInvisibleClick(canvas);
+  },
+
+  toggleFullscreen : function()
+  {
+    toggleFullscreen().then(Main.resize);
+    Main.togglePause(true);
+  },
+
+  togglePause : function(pause)
+  {
+    // pause is a cooldown. We pause to help autofocus, but we don't want to do it forever...
+    if (pause === undefined) {
+       pause = !Main.isPaused();
+    }
+    _pause = pause? 15 : 0;
+  },
+
+  isPaused : function()
+  {
+     return _pause > 0;
+  },
+
+  scaleCanvas : function(canvas, width, height)
+  {
+    var dim = width;
+    if (height < dim) {
+      dim = height;
+    }
+    console.log(dim + "x" + dim);
+    canvas.style.width = dim + "px";
+    canvas.style.height = dim + "px";
+  },
+
+  alignInvisibleClick : function(canvas)
+  {
+     canvas = canvas || document.getElementById('canvas');
+     var cpos = canvas.getBoundingClientRect();
+     var invisible_click = document.getElementById("invisible_click");
+     invisible_click.style.width = canvas.style.width;
+     invisible_click.style.height = canvas.style.height;
+     invisible_click.style.top = cpos.top + "px";
+     invisible_click.style.left = cpos.left + "px";
+     invisible_click.style.zoom = canvas.style.zoom;
+  },
+
+  encode : function(filename, data)
+  {
+    console.log("encoding " + filename);
+    var res = Module._encode(data.byteOffset, data.length, -1);
+    console.log(res);
+    Main.setTitle(filename);
+    Main.setActive(true);
+  },
+
+  dragDrop : function(event)
+  {
+    console.log("drag drop?");
+    console.log(event);
+    const files = event.dataTransfer.files;
+    if (files && files.length === 1) {
+      importFile(files[0]);
+    }
+  },
+
+  clickNav : function()
+  {
+    document.getElementById("nav-button").focus();
+  },
+
+  blurNav : function(pause)
+  {
+    if (pause === undefined) {
+       pause = true;
+    }
+    document.getElementById("nav-button").blur();
+    document.getElementById("nav-content").blur();
+    document.getElementById("nav-find-file-link").blur();
+    Main.togglePause(pause);
+  },
+
+  clickFileInput : function()
+  {
+    document.getElementById("file_input").click();
+  },
+
+  fileInput : function(ev)
+  {
+    console.log("file input: " + ev);
+    var file = document.getElementById('file_input').files[0];
+    if (file)
+       importFile(file);
+    Main.blurNav(false);
+  },
+
+  nextFrame : function()
+  {
+    _counter += 1;
+    if (_pause > 0) {
+       _pause -= 1;
+    }
+    var start = performance.now();
+    if (!Main.isPaused()) {
+       Module._render();
+       var frameCount = Module._next_frame();
+    }
+
+    var elapsed = performance.now() - start;
+    var nextInterval = _interval>elapsed? _interval-elapsed : 0;
+    setTimeout(Main.nextFrame, nextInterval);
+
+    if (_showStats && frameCount) {
+      _renderTime += elapsed;
+      Main.setHTML( "status", elapsed + " : " + frameCount + " : " + Math.ceil(_renderTime/frameCount));
+    }
+    if ( !(_counter & 31) ) {
+       Main.resize();
+    }
+  },
+
+  setActive : function(active)
+  {
+    // hide cursor when there's a barcode active
+    var invisi = document.getElementById("invisible_click");
+    invisi.classList.remove("active");
+    invisi.classList.add("active");
+  },
+
+  setMode : function(mode_str)
+  {
+    var is_4c = (mode_str == "4C");
+    Module._configure(2, 255, 255, is_4c);
+
+    var nav = document.getElementById("nav-container");
+    if (is_4c) {
+      nav.classList.remove("mode-b");
+      nav.classList.add("mode-4c");
+    } else if (mode_str == "B") {
+      nav.classList.add("mode-b");
+      nav.classList.remove("mode-4c");
+    } else {
+      nav.classList.remove("mode-b");
+      nav.classList.remove("mode-4c");
+    }
+  },
+
+  setHTML : function(id, msg)
+  {
+    document.getElementById(id).innerHTML = msg;
+  },
+
+  setTitle : function(msg)
+  {
+    document.title = "Cimbar: " + msg;
+  }
+};
+}();
+
+window.addEventListener("touchstart", function(e) {
+  e = e || event;
+  Main.togglePause(true);
+}, false);
+
+window.addEventListener("touchend", function(e) {
+  e = e || event;
+  Main.togglePause(false);
+}, false);
+
+window.addEventListener("touchcancel", function(e) {
+  e = e || event;
+  Main.togglePause(false);
+}, false);
+
+window.addEventListener("dragover", function(e) {
+  e = e || event;
+  e.preventDefault();
+
+  document.body.style["opacity"] = 0.5;
+}, false);
+
+window.addEventListener("dragleave", function(e) {
+  e = e || event;
+  e.preventDefault();
+
+  document.body.style["opacity"] = 1.0;
+}, false);
+
+window.addEventListener("drop", function(e) {
+  e = e || event;
+  e.preventDefault();
+  e.stopPropagation();
+  Main.dragDrop(e);
+  document.body.style["opacity"] = 1.0;
+}, false);
+
+</script>
+
+</body>
+</html>
