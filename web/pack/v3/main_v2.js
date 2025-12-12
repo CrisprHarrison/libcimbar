@@ -158,7 +158,8 @@ var Main = function () {
         Module._free(wasmFn.byteOffset);
       }
 
-      // Add has-file class to expand dragdrop
+      // 隐藏胶囊，显示 Canvas 容器
+      document.getElementById('capsule-placeholder').classList.add('hidden');
       document.getElementById('dragdrop').classList.add('has-file');
 
       Main.setTitle(filename);
@@ -270,6 +271,10 @@ var Main = function () {
         nav.classList.remove("mode-bm");
         nav.classList.remove("mode-4c");
       }
+    },
+
+    refreshPage: function () {
+      window.location.reload();
     },
 
     setHTML: function (id, msg) {
